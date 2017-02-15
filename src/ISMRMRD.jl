@@ -6,47 +6,47 @@ import Base: start, next, done, length, size, eltype;
 export 	ISMRMRD_dataset,
 	ISMRMRD_acquisition,
 	ISMRMRD_acquisitionheader,
-	ISMRMRD_EncodingCounters, 
-	read_xml_header, 
-	write_xml_header, 
-	append_dataset, 
+	ISMRMRD_EncodingCounters,
+	read_xml_header,
+	write_xml_header,
+	append_dataset,
 	read_acquisition,
-	get_number_of_acquisitions, 
-	get_number_of_data_samples, 
-	get_number_of_trajectory_samples, 
-	get_data, 
-	get_trajectory, 
-	get_version, 
-	get_flags, 
-	get_meas_uid, 
-	get_scan_counter, 
-	get_acquisition_timestamp, 
-	get_physiology_timestamp, 
-	get_number_of_samples, 
-	get_available_channels, 
-	get_active_channels, 
-	get_channel_mask, 
-	get_discard_pre, 
-	get_discard_post, 
-	get_center_sample, 
-	get_encoding_space_ref, 
-	get_trajectory_dimensions, 
-	get_sample_time_us, 
-	get_position, 
-	get_read_dir, 
-	get_phase_dir, 
-	get_slice_dir, 
-	get_patient_table_position, 
-	get_encoding_counters, 
-	get_user_ints, 
-	get_user_floats, 
-	get_acquisitionheader, 
+	get_number_of_acquisitions,
+	get_number_of_data_samples,
+	get_number_of_trajectory_samples,
+	get_data,
+	get_trajectory,
+	get_version,
+	get_flags,
+	get_meas_uid,
+	get_scan_counter,
+	get_acquisition_timestamp,
+	get_physiology_timestamp,
+	get_number_of_samples,
+	get_available_channels,
+	get_active_channels,
+	get_channel_mask,
+	get_discard_pre,
+	get_discard_post,
+	get_center_sample,
+	get_encoding_space_ref,
+	get_trajectory_dimensions,
+	get_sample_time_us,
+	get_position,
+	get_read_dir,
+	get_phase_dir,
+	get_slice_dir,
+	get_patient_table_position,
+	get_encoding_counters,
+	get_user_ints,
+	get_user_floats,
+	get_acquisitionheader,
 	is_flag_set,
-	length, 
-	size, 
-	start, 
-	done, 
-	next, 
+	length,
+	size,
+	start,
+	done,
+	next,
 	eltype,
 	get_field_strength,
 	get_num_rx_channels,
@@ -546,7 +546,7 @@ end
 # flags
 #
 function is_flag_set(acq::ISMRMRD_acquisition, flag_val::UInt64)
-	flags = get_flags(acq);    
+	flags = get_flags(acq);
 	bitmask = UInt64(1) << (flag_val - 1);
 	return (flags & bitmask) > 0;
 end
@@ -618,7 +618,7 @@ end
 
 function get_enc_fov(xmlhdr::String)
 	pat = r"\<encodedSpace\>.*\<fieldOfView_mm\>\n\t+\<x\>(\w+\.?\w+?)\<\/x\>\n\t+\<y\>(\w+\.?\w+)\<\/y\>\n\t+\<z\>(\w+\.?\w+)\<\/z\>\n\t+\<\/fieldOfView_mm\>.*\<\/encodedSpace\>"s;
-	
+
 	m = match(pat,xmlhdr);
 
 	#better way to check?
@@ -632,7 +632,7 @@ end
 
 function get_enc_matrix(xmlhdr::String)
 	pat = r"\<encodedSpace\>\n\t+\<matrixSize\>\n\t+\<x\>(\d+)\<\/x\>\n\t+\<y\>(\d+)\<\/y\>\n\t+\<z\>(\d+)\<\/z\>\n\t+\<\/matrixSize\>.*\<\/encodedSpace\>"s;
-	
+
 	m = match(pat,xmlhdr);
 
 	#better way to check?
@@ -666,7 +666,7 @@ function get_recon_matrix(xmlhdr::String)
 	if isa(m,Void)
 		return [];
 	else
-		return broadcast((x)->parse(Int64,x,10),m.captures); 
+		return broadcast((x)->parse(Int64,x,10),m.captures);
 	end
 end
 
@@ -683,7 +683,7 @@ function get_encoding_limits(xmlhdr::String)
 
 	# sort
 	lims = broadcast((x)->parse(Int64,x,10),m.captures); #float.(m.captures);
-	minLims = lims[1:3:end]; 
+	minLims = lims[1:3:end];
 	maxLims = lims[2:3:end];
 	cenLims = lims[3:3:end];
 
@@ -747,17 +747,21 @@ end
 
 """
  quick solution to read all data into an array
+ returns a 11D array [nkx,nc,nky,nkz,nave,nsli,ncont,nph,nrep,nset,nseg]
 """
 function read_all_data(dset::ISMRMRD_dataset, skip_flags::Array{UInt64,1})
 
+	num_acqs = get_number_of_acquisitions(dset);
 	#create an array based on encoding limits / matrix size
 	hdr = read_xml_header(dset);
 	enc_mat = get_enc_matrix(hdr);
+	ns = enc_mat[1];
 	nc = get_num_rx_channels(hdr);
+	nc = nc[1];
 	(lmin,lmax,lcen)=get_encoding_limits(hdr);
 
-	#create array 
-	sz  = (	enc_mat[1]*nc[1],
+	#create array
+	sz  = (	ns*nc,
 		lmax[1]-lmin[1]+1,
 		lmax[2]-lmin[2]+1,
 		lmax[3]-lmin[3]+1,
@@ -768,28 +772,31 @@ function read_all_data(dset::ISMRMRD_dataset, skip_flags::Array{UInt64,1})
 		lmax[8]-lmin[8]+1,
 		lmax[9]-lmin[9]+1);
 
-	data = zeros(Complex{Float32},sz);
+	data = zeros(Complex{Float32},ns*nc,num_acqs);
 	for acq in dset
 		acqdata = get_data(acq);
 
 		#skip certain flags
-		if !is_flag_set(acq,skip_flags)
-			idx = get_encoding_counters(acq);
-			data[	:,
-				idx.kspace_encode_step_1+1,
-				idx.kspace_encode_step_2+1,
-				idx.average+1,
-				idx.slice+1,
-				idx.contrast+1,
-				idx.phase+1,
-				idx.repetition+1,
-				idx.set+1,
-				idx.segment+1] = acqdata; 
-		else
-			println("skip_flags found, skipping acq ", get_scan_counter(acq) );
-		end		
+		if  !is_flag_set(acq,skip_flags)
+			#idx = get_encoding_counters(acq);
+			idx = get_scan_counter(acq);
+			data[:,idx]=acqdata;
+			#data[	:,
+			#	idx.kspace_encode_step_1+1,
+			#	idx.kspace_encode_step_2+1,
+			#	idx.average+1,
+			#	idx.slice+1,
+			#	idx.contrast+1,
+			#	idx.phase+1,
+			#	idx.repetition+1,
+			#	idx.set+1,
+			#	idx.segment+1] = acqdata;
+		end
 	end
 
+	#reshape & return
+	# TODO: permute data? It is quite memory intensive...
+	data=reshape(data,(ns,nc,sz[2],sz[3],sz[4],sz[5],sz[6],sz[7],sz[8],sz[9],sz[10]));
 	return data;
 end
 
@@ -797,12 +804,12 @@ end
 """
 function read_all_data(dset::ISMRMRD_dataset)
 	# default flags to skip
-	skip_flags = 	[ISMRMRD_ACQ_IS_NOISE_MEASUREMENT, 	 
-			ISMRMRD_ACQ_IS_PARALLEL_CALIBRATION, 	
-			ISMRMRD_ACQ_IS_NAVIGATION_DATA, 	
-			ISMRMRD_ACQ_IS_PHASECORR_DATA, 		
-			ISMRMRD_ACQ_IS_DUMMYSCAN_DATA, 		
-			ISMRMRD_ACQ_IS_RTFEEDBACK_DATA, 		
+	skip_flags = 	[ISMRMRD_ACQ_IS_NOISE_MEASUREMENT,
+			ISMRMRD_ACQ_IS_PARALLEL_CALIBRATION,
+			ISMRMRD_ACQ_IS_NAVIGATION_DATA,
+			ISMRMRD_ACQ_IS_PHASECORR_DATA,
+			ISMRMRD_ACQ_IS_DUMMYSCAN_DATA,
+			ISMRMRD_ACQ_IS_RTFEEDBACK_DATA,
 			ISMRMRD_ACQ_IS_SURFACECOILCORRECTIONSCAN_DATA];
 
 	return read_all_data(dset,skip_flags);
