@@ -1,5 +1,7 @@
 module ISMRMRD
 
+__precompile__(true)
+
 import Base: start, next, done, length, size, eltype;
 
 # lots to export
@@ -118,20 +120,65 @@ const   ISMRMRD_ACQ_USER6                               = 0x000000000000003E;
 const   ISMRMRD_ACQ_USER7                               = 0x000000000000003F;
 const   ISMRMRD_ACQ_USER8                               = 0x0000000000000040;
 
+
+# Error codes
+const ISMRMRD_BEGINERROR 	=-1;
+const ISMRMRD_NOERROR		= 0;
+const ISMRMRD_MEMORYERROR	= 1;
+const ISMRMRD_FILEERROR		= 2;
+const ISMRMRD_TYPEERROR		= 3;
+const ISMRMRD_RUNTIMEERROR 	= 4;
+const ISMRMRD_HDF5ERROR 	= 5;
+const ISMRMRD_ENDERROR		= 6;
+
+#  ISMRMRD data types
+const ISMRMRD_USHORT   = 1;# /**< corresponds to uint16_t */
+const ISMRMRD_SHORT    = 2;# /**< corresponds to int16_t */
+const ISMRMRD_UINT     = 3;# /**< corresponds to uint32_t */
+const ISMRMRD_INT      = 4;# /**< corresponds to int32_t */
+const ISMRMRD_FLOAT    = 5;# /**< corresponds to float */
+const ISMRMRD_DOUBLE   = 6;# /**< corresponds to double */
+const ISMRMRD_CXFLOAT  = 7;# /**< corresponds to complex float */
+const ISMRMRD_CXDOUBLE = 8;# /**< corresponds to complex double */
+
+
+# Image Types
+const ISMRMRD_IMTYPE_MAGNITUDE = 1;
+const ISMRMRD_IMTYPE_PHASE     = 2;
+const ISMRMRD_IMTYPE_REAL      = 3;
+const ISMRMRD_IMTYPE_IMAG      = 4;
+const ISMRMRD_IMTYPE_COMPLEX   = 5;
+
+# Image Flags
+const ISMRMRD_IMAGE_IS_NAVIGATION_DATA =  1;
+const ISMRMRD_IMAGE_USER1              = 57;
+const ISMRMRD_IMAGE_USER2              = 58;
+const ISMRMRD_IMAGE_USER3              = 59;
+const ISMRMRD_IMAGE_USER4              = 60;
+const ISMRMRD_IMAGE_USER5              = 61;
+const ISMRMRD_IMAGE_USER6              = 62;
+const ISMRMRD_IMAGE_USER7              = 63;
+const ISMRMRD_IMAGE_USER8              = 64;
+
+
+
 type ISMRMRD_dataset
 	ptr::Ptr{Void};
 
-	function ISMRMRD_dataset(filename::String,a::String="r")
+	function ISMRMRD_dataset(filename::String,g::String="dataset",a::String="r")
 	    if a == "w"
 		create_file = 1;
 	    else
 		create_file = 0;
 	    end
 
-	    #TODO, check for file existence
+
+	    if (create_file == 0) && !isfile(filename)
+	      error("Cannot open ", filename, " for reading. Does file exist?");
+	    end
 
 	    ptr = ccall((:jl_ismrmrd_create_dataset, libismrmrdwrap),
-			Ptr{Void},(Cstring, Cint), filename, create_file);
+			Ptr{Void},(Cstring, Cstring, Cint), filename,g, create_file);
 
 	    smart_ptr = new(ptr);
 	    finalizer(smart_ptr,
@@ -149,7 +196,8 @@ type ISMRMRD_acquisition
 		ptr = ccall((:jl_ismrmrd_create_acquisition, libismrmrdwrap),
 	      		Ptr{Void},() );
 		smart_ptr = new(ptr);
-		finalizer(smart_ptr, obj -> ccall((:jl_ismrmrd_delete_acquisition,libismrmrdwrap),
+		finalizer(smart_ptr, obj -> 
+	    		ccall((:jl_ismrmrd_delete_acquisition,libismrmrdwrap),
 			Void, (Ptr{Void},), obj.ptr));
 		return smart_ptr;
 	end
@@ -158,16 +206,20 @@ type ISMRMRD_acquisition
 		ptr = ccall((:jl_ismrmrd_copy_acquisition, libismrmrdwrap),
 			Ptr{Void},(Ptr{Void},), acq.ptr);
 		smart_ptr = new(ptr);
-		finalizer(smart_ptr, obj -> ccall((:jl_ismrmrd_delete_acquisition,libismrmrdwrap),
+		finalizer(smart_ptr, obj -> 
+	    		ccall((:jl_ismrmrd_delete_acquisition,libismrmrdwrap),
 			Void, (Ptr{Void},), obj.ptr));
 		return smart_ptr;
 	end
 
-	function ISMRMRD_acquisition(samples::Int32, channels::Int32, traj_dims::Int32)
+	function ISMRMRD_acquisition(samples::Int32, 
+			      channels::Int32, traj_dims::Int32)
 		ptr = ccall((:jl_ismrmrd_setup_acquisition, libismrmrdwrap),
-			Ptr{Void},(Cint, Cint, Cint), samples, channels, traj_dims);
+			Ptr{Void},(Cint, Cint, Cint), 
+				samples, channels, traj_dims);
 		smart_ptr = new(ptr);
-		finalizer(smart_ptr, obj -> ccall((:jl_ismrmrd_delete_acquisition,libismrmrdwrap),
+		finalizer(smart_ptr, obj -> 
+	    		ccall((:jl_ismrmrd_delete_acquisition,libismrmrdwrap),
 			Void, (Ptr{Void},), obj.ptr));
 		return smart_ptr;
 	end
@@ -176,6 +228,26 @@ type ISMRMRD_acquisition
 		return new(ptr);
 	end
 
+end
+
+"""
+ISMRMRD_image type
+"""
+type ISMRMRD_image
+  ptr::Ptr{Void}
+  function ISMRMRD_image()
+    ptr = ccall((:jl_ismrmrd_create_image,libismrmrdwrap),
+		Ptr{Void},());
+    smart_ptr = new(ptr);
+    finalizer(smart_ptr,obj -> ccall((:jl_ismrmrmd_delete_image,libismrmrdwrap),
+				      Void, (Ptr{Void},),obj.ptr));
+    return smart_ptr;
+				     
+  end
+  
+  function ISMRMRD_image(ptr::Ptr{Void})
+    return new(ptr);
+  end
 end
 
 type ISMRMRD_EncodingCounters
@@ -466,6 +538,11 @@ function get_patient_table_position(acq::ISMRMRD_acquisition)
 	return x;
 end
 
+"""
+  returns the encoding counter for a given acquisition type
+  Note: encoding counter is converted to Julia style 1-index,
+  from the C-style 0-idx
+"""
 function get_encoding_counters(acq::ISMRMRD_acquisition)
 	k1 = ccall((:jl_ismrmrd_get_ec_kspace_encode_step_1,libismrmrdwrap),Cushort,(Ptr{Void},),acq.ptr);
 	k2 = ccall((:jl_ismrmrd_get_ec_kspace_encode_step_2,libismrmrdwrap),Cushort,(Ptr{Void},),acq.ptr);
@@ -482,16 +559,16 @@ function get_encoding_counters(acq::ISMRMRD_acquisition)
 	end
 
 	# convert to signed ints so we don't have to read hex
-	return ISMRMRD_EncodingCounters(convert(Int16,k1),
-					convert(Int16,k2),
-					convert(Int16,a),
-					convert(Int16,sli),
-					convert(Int16,co),
-					convert(Int16,p),
-					convert(Int16,r),
-					convert(Int16,set),
-					convert(Int16,seg),
-					convert(Array{Int16,1},user));
+	return ISMRMRD_EncodingCounters(convert(Int16,k1+1),
+					convert(Int16,k2)+1,
+					convert(Int16,a+1),
+					convert(Int16,sli+1),
+					convert(Int16,co+1),
+					convert(Int16,p+1),
+					convert(Int16,r+1),
+					convert(Int16,set+1),
+					convert(Int16,seg+1),
+					convert(Array{Int16,1},user.+1));
 end
 
 function get_user_ints(acq::ISMRMRD_acquisition)
@@ -814,5 +891,116 @@ function read_all_data(dset::ISMRMRD_dataset)
 
 	return read_all_data(dset,skip_flags);
 end
+
+"""
+reads in ISMRMRD images from a dataset
+"""
+function read_image(dset::ISMRMRD_dataset,group::String, idx::Int)
+	#checks
+	# TODO, add checks
+	#num_acqs = get_number_of_acquisitions(dset);
+	#if idx < 1 || idx > num_acqs
+	#	error("idx $idx is not a valid index number");
+	#end
+
+	ptr=ccall((:jl_ismrmrd_read_image, libismrmrdwrap),
+		Ptr{Void},
+		(Ptr{Void},Cstring,Cint),
+		dset.ptr,group,idx-1);
+
+	return ISMRMRD_image(ptr);
+end
+
+
+"""
+returns the type of image data
+
+for reference:
+ISMRMRD_USHORT   = 1;# /**< corresponds to uint16_t */
+ISMRMRD_SHORT    = 2;# /**< corresponds to int16_t */
+ISMRMRD_UINT     = 3;# /**< corresponds to uint32_t */
+ISMRMRD_INT      = 4;# /**< corresponds to int32_t */
+ISMRMRD_FLOAT    = 5;# /**< corresponds to float */
+ISMRMRD_DOUBLE   = 6;# /**< corresponds to double */
+ISMRMRD_CXFLOAT  = 7;# /**< corresponds to complex float */
+ISMRMRD_CXDOUBLE = 8;# /**< corresponds to complex double */
+"""
+function get_image_data_type(img::ISMRMRD_image)
+  data_type = ccall((:jl_ismrmrd_get_image_data_type,libismrmrdwrap),
+		    Cint,
+		    (Ptr{Void},),
+		    img.ptr);
+  return data_type;
+end
+
+"""
+returns image dimensions
+"""
+function get_image_dimensions(img::ISMRMRD_image)
+  dims = ccall((:jl_ismrmrd_get_image_dims,libismrmrdwrap),
+	      Ptr{Cushort},
+	      (Ptr{Void},),
+	     img.ptr);
+
+  return convert.(Int,unsafe_wrap(Array,dims,3,false));
+end
+
+
+"""
+returns the image data pointeed to by the ISMRMRD_image type
+"""
+function get_data(img::ISMRMRD_image)
+  data_type = get_image_data_type(img);
+  dims = get_image_dimensions(img);
+
+  if data_type == 1
+    ptr = ccall((:jl_ismrmrd_get_ushort_data,libismrmrdwrap),
+		Ptr{Cushort},
+		(Ptr{Void},),
+		img.ptr);
+  elseif data_type == 2
+    ptr = ccall((:jl_ismrmrd_get_short_data,libismrmrdwrap),
+		Ptr{Cshort},
+		(Ptr{Void},),
+		img.ptr);
+  elseif data_type == 3
+    ptr = ccall((:jl_ismrmrd_get_uint_data,libismrmrdwrap),
+		Ptr{Cuint},
+		(Ptr{Void},),
+		img.ptr);
+  elseif data_type == 4
+    ptr = ccall((:jl_ismrmrd_get_int_data,libismrmrdwrap),
+		Ptr{Cint},
+		(Ptr{Void},),
+		img.ptr);
+  elseif data_type == 5
+    ptr = ccall((:jl_ismrmrd_get_float_data,libismrmrdwrap),
+		Ptr{Cfloat},
+		(Ptr{Void},),
+		img.ptr);
+  elseif data_type == 6
+    ptr = ccall((:jl_ismrmrd_get_double_data,libismrmrdwrap),
+		Ptr{Cdouble},
+		(Ptr{Void},),
+		img.ptr);
+  elseif data_type == 7
+    ptr = ccall((:jl_ismrmrd_get_complex_float_data,libismrmrdwrap),
+		Ptr{Complex64},
+		(Ptr{Void},),
+		img.ptr);
+  elseif data_type == 8
+    ptr = ccall((:jl_ismrmrd_get_complex_double_data,libismrmrdwrap),
+		Ptr{Complex128},
+		(Ptr{Void},),
+		img.ptr);
+  else
+    error("unknown data type");
+  end
+
+  # will return an array of type T, given a pointer of Ptr{T}
+  return unsafe_wrap(Array,ptr,(dims[1],dims[2],dims[3]),true); # let julia take ownership of the memory
+
+end
+
 
 end #module

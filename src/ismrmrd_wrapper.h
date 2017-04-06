@@ -11,15 +11,38 @@ extern "C" {
 	 *	ISMRMRD::Dataset interface
 	 *
 	*/
-	void*  jl_ismrmrd_create_dataset(const char*, int );
+
+	/* Inputs: filename, groupname, 0=read,1=write */
+	void*  jl_ismrmrd_create_dataset(const char*, const char*, int );
 	void   jl_ismrmrd_delete_dataset(void* );
 	/*int jl_ismrmrd_is_dataset_open(void *);*/
-  int jl_ismrmrd_read_header(void*, char* );
+	int jl_ismrmrd_read_header(void*, char* );
 	/*void* jl_ismrmrd_deserialize_header(const char* );*/
 	void jl_ismrmrd_write_header(void*, const char* );
 	void jl_ismrmrd_append_acquisition(void*, void *);
 	void* jl_ismrmrd_read_acquisition(void*, int32_t);
 	int jl_ismrmrd_get_number_of_acquisitions(void* );
+	
+	/* arguments: dataset,groupname,image idx */
+	void* jl_ismrmrd_read_image(void*, const char*, int32_t);
+
+	/*
+	 *
+	 * 	ISMRMRD::Image interface
+	 *
+	 */
+	void* jl_ismrmrd_create_image(void);
+	void jl_ismrmrd_delete_image(void*);
+	int jl_ismrmrd_get_image_data_type(void*);
+	uint16_t* jl_ismrmrd_get_image_dims(void*);
+	uint16_t* jl_ismrmrd_get_ushort_data(void *);
+	int16_t* jl_ismrmrd_get_short_data(void *);
+	uint32_t* jl_ismrmrd_get_uint_data(void *);
+	int32_t* jl_ismrmrd_get_int_data(void *);
+	float* jl_ismrmrd_get_float_data(void *);
+	double* jl_ismrmrd_get_double_data(void *);
+	complex_float_t* jl_ismrmrd_get_complex_float_data(void *);
+	complex_double_t* jl_ismrmrd_get_complex_double_data(void *);
 
 	/*
 	 *

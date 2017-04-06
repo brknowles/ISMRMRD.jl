@@ -5,23 +5,26 @@
 #include <string>
 #include "ismrmrd_wrapper.h"
 
+/*
+ * trying to cast return values to something that
+ * is a little bit easier to deal with in julia
+ */
+
 //#define DEBUG 1
 
 // Reader wrappers
 void*
-jl_ismrmrd_create_dataset(const char * filename,int create_file) {
+jl_ismrmrd_create_dataset(const char * filename, 
+			  const char* groupname, 
+			  int create_file) {
 	bool bCreate = (create_file > 0);
 
-#ifdef DEBUG
-	std::cout << "Creating ismrmrd_dataset \n";
-#endif
-
 	/*
-	 * Dataset is initialied and file is read
+	 * Dataset is initialised and file is read
 	 */
 	try{
 		ISMRMRD::Dataset* dset =
-			new ISMRMRD::Dataset(filename,"dataset",bCreate);
+			new ISMRMRD::Dataset(filename,groupname,bCreate);
 		return reinterpret_cast<void*>(dset);
 	} catch (...) {
 		std::cout<<" jl_ismrmrd_create_dataset: " <<
@@ -35,13 +38,7 @@ void
 jl_ismrmrd_delete_dataset(void* v_ds) {
 	ISMRMRD::Dataset* dset = reinterpret_cast<ISMRMRD::Dataset*>(v_ds);
 
-#ifdef DEBUG
-	std::cout << "do we delete ismrmrd_dataset? \n";
-#endif
 	if (dset) {
-#ifdef DEBUG
-	std::cout << "deleting ismrmrd_dataset \n";
-#endif
 		delete dset;
 	}
 	return;
@@ -91,7 +88,8 @@ jl_ismrmrd_append_acquisition(void* v_ds, void* v_aq) {
 
 }
 
-void* jl_ismrmrd_read_acquisition(void* v_ds, int32_t idx) {
+void* 
+jl_ismrmrd_read_acquisition(void* v_ds, int32_t idx) {
 	if(!v_ds)
 		return NULL;
 
@@ -100,6 +98,124 @@ void* jl_ismrmrd_read_acquisition(void* v_ds, int32_t idx) {
 	dset->readAcquisition((uint32_t)idx, *acq);
 
 	return acq;
+}
+
+void*
+jl_ismrmrd_create_image(void) {
+  ISMRMRD::ISMRMRD_Image* im = ISMRMRD::ismrmrd_create_image();
+  return im;
+}
+
+void
+jl_ismrmrd_delete_image(void* v_im) {
+  ISMRMRD::ISMRMRD_Image *im = (ISMRMRD::ISMRMRD_Image*)v_im;
+  ISMRMRD::ismrmrd_free_image(im);
+  return;
+}
+
+void* 
+jl_ismrmrd_read_image(void* v_ds, const char * path, int32_t idx) {
+	if(!v_ds)
+		return NULL;
+
+	/*ISMRMRD::Dataset* dset	= reinterpret_cast<ISMRMRD::Dataset*>(v_ds);*/
+	ISMRMRD::ISMRMRD_Dataset* ds = (ISMRMRD::ISMRMRD_Dataset*) v_ds;
+	ISMRMRD::ISMRMRD_Image* im = ISMRMRD::ismrmrd_create_image();
+
+	ISMRMRD::ismrmrd_read_image(ds,path,idx,im);
+
+	return im;
+}
+
+int 
+jl_ismrmrd_get_image_data_type(void* v_im) {
+  if (!v_im)
+    return -1;
+
+  ISMRMRD::ISMRMRD_Image *im = (ISMRMRD::ISMRMRD_Image*)v_im;
+  return (int)im->head.data_type;
+
+}
+
+uint16_t*
+jl_ismrmrd_get_image_dims(void* v_im) {
+  if (!v_im)
+    return NULL;
+
+  ISMRMRD::ISMRMRD_Image *im = (ISMRMRD::ISMRMRD_Image*)v_im;
+  return reinterpret_cast<uint16_t*>(im->head.matrix_size);
+}
+
+int16_t*
+jl_ismrmrd_get_short_data(void* v_im) {
+  if (!v_im)
+    return NULL;
+
+  ISMRMRD::ISMRMRD_Image *im = (ISMRMRD::ISMRMRD_Image*)v_im;
+  return (int16_t*)im->data;
+}
+
+uint16_t*
+jl_ismrmrd_get_ushort_data(void* v_im) {
+  if (!v_im)
+    return NULL;
+
+  ISMRMRD::ISMRMRD_Image *im = (ISMRMRD::ISMRMRD_Image*)v_im;
+  return (uint16_t*)im->data;
+}
+
+uint32_t*
+jl_ismrmrd_get_uint_data(void* v_im) {
+  if (!v_im)
+    return NULL;
+
+  ISMRMRD::ISMRMRD_Image *im = (ISMRMRD::ISMRMRD_Image*)v_im;
+  return (uint32_t*)im->data;
+}
+
+int32_t*
+jl_ismrmrd_get_int_data(void* v_im) {
+  if (!v_im)
+    return NULL;
+
+  ISMRMRD::ISMRMRD_Image *im = (ISMRMRD::ISMRMRD_Image*)v_im;
+  return (int32_t*)im->data;
+}
+
+double*
+jl_ismrmrd_get_double_data(void* v_im) {
+  if (!v_im)
+    return NULL;
+
+  ISMRMRD::ISMRMRD_Image *im = (ISMRMRD::ISMRMRD_Image*)v_im;
+  return (double*)im->data;
+}
+
+float*
+jl_ismrmrd_get_float_data(void* v_im) {
+  if (!v_im)
+    return NULL;
+
+  ISMRMRD::ISMRMRD_Image *im = (ISMRMRD::ISMRMRD_Image*)v_im;
+  return (float*)im->data;
+}
+
+complex_double_t*
+jl_ismrmrd_get_complex_double_data(void* v_im) {
+  if (!v_im)
+    return NULL;
+
+  ISMRMRD::ISMRMRD_Image *im = (ISMRMRD::ISMRMRD_Image*)v_im;
+  return (complex_double_t*)im->data;
+}
+
+complex_float_t*
+jl_ismrmrd_get_complex_float_data(void* v_im) {
+  if (!v_im)
+    return NULL;
+
+  ISMRMRD::ISMRMRD_Image *im = (ISMRMRD::ISMRMRD_Image*)v_im;
+  return (complex_float_t*)im->data;
 }
 
 int
